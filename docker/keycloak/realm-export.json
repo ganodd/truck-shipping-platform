@@ -1,0 +1,46 @@
+{
+  "id": "truck-shipping",
+  "realm": "truck-shipping",
+  "displayName": "TruckShip Platform",
+  "enabled": true,
+  "sslRequired": "external",
+  "registrationAllowed": false,
+  "loginWithEmailAllowed": true,
+  "duplicateEmailsAllowed": false,
+  "resetPasswordAllowed": true,
+  "editUsernameAllowed": false,
+  "bruteForceProtected": true,
+  "accessTokenLifespan": 900,
+  "ssoSessionIdleTimeout": 1800,
+  "ssoSessionMaxLifespan": 36000,
+  "roles": {
+    "realm": [
+      { "name": "SHIPPER", "description": "Shipper / Customer" },
+      { "name": "CARRIER", "description": "Carrier / Driver" },
+      { "name": "DISPATCHER", "description": "Dispatcher / Fleet Manager" },
+      { "name": "ADMIN", "description": "Platform Administrator" }
+    ]
+  },
+  "clients": [
+    {
+      "clientId": "api-gateway",
+      "name": "TruckShip API Gateway",
+      "enabled": true,
+      "publicClient": false,
+      "standardFlowEnabled": true,
+      "serviceAccountsEnabled": true,
+      "directAccessGrantsEnabled": true,
+      "redirectUris": ["http://localhost:3100/*"],
+      "webOrigins": ["http://localhost:3100"]
+    },
+    {
+      "clientId": "web-app",
+      "name": "TruckShip Web App",
+      "enabled": true,
+      "publicClient": true,
+      "standardFlowEnabled": true,
+      "redirectUris": ["http://localhost:3100/*"],
+      "webOrigins": ["http://localhost:3100"]
+    }
+  ]
+}

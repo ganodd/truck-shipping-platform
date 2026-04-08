@@ -1,0 +1,58 @@
+# ─── Stage 1: Builder ──────────────────────────────────────────────────────
+FROM node:20-alpine AS builder
+
+# Install pnpm
+RUN corepack enable && corepack prepare pnpm@9 --activate
+
+WORKDIR /app
+
+# Copy workspace manifests
+COPY package.json pnpm-workspace.yaml pnpm-lock.yaml turbo.json tsconfig.base.json ./
+
+# Copy all package manifests for dependency resolution
+COPY packages/shared-types/package.json ./packages/shared-types/
+COPY packages/shared-validators/package.json ./packages/shared-validators/
+COPY packages/shared-utils/package.json ./packages/shared-utils/
+COPY packages/database/package.json ./packages/database/
+
+# Copy service manifest (build arg: SERVICE_NAME)
+ARG SERVICE_NAME
+COPY services/${SERVICE_NAME}/package.json ./services/${SERVICE_NAME}/
+
+# Install all dependencies
+RUN pnpm install --frozen-lockfile
+
+# Copy source code
+COPY packages/ ./packages/
+COPY services/${SERVICE_NAME}/ ./services/${SERVICE_NAME}/
+
+# Generate Prisma client
+RUN pnpm --filter=@truck-shipping/database generate
+
+# Build shared packages then the service
+RUN pnpm turbo build --filter=@truck-shipping/${SERVICE_NAME}
+
+# ─── Stage 2: Production runner ────────────────────────────────────────────
+FROM node:20-alpine AS runner
+
+RUN addgroup --system --gid 1001 nodejs && \
+    adduser --system --uid 1001 service
+
+WORKDIR /app
+
+ARG SERVICE_NAME
+ENV SERVICE_NAME=${SERVICE_NAME}
+
+# Copy built output from builder
+COPY --from=builder --chown=service:nodejs /app/services/${SERVICE_NAME}/dist ./dist
+COPY --from=builder --chown=service:nodejs /app/node_modules ./node_modules
+COPY --from=builder --chown=service:nodejs /app/services/${SERVICE_NAME}/package.json ./package.json
+
+USER service
+
+EXPOSE 3000
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=15s --retries=3 \
+  CMD node -e "require('http').get('http://localhost:3000/api/v1/health/live', r => r.statusCode === 200 ? process.exit(0) : process.exit(1))"
+
+CMD ["node", "dist/main"]

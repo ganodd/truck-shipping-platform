@@ -1,0 +1,34 @@
+{
+  "name": "@truck-shipping/database",
+  "version": "0.0.1",
+  "private": true,
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "migrate:dev": "prisma migrate dev",
+    "migrate:deploy": "prisma migrate deploy",
+    "migrate:reset": "prisma migrate reset",
+    "seed": "ts-node prisma/seed.ts",
+    "studio": "prisma studio",
+    "generate": "prisma generate",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@prisma/client": "^5.14.0"
+  },
+  "devDependencies": {
+    "@types/bcryptjs": "^2.4.0",
+    "bcryptjs": "^2.4.3",
+    "prisma": "^5.14.0",
+    "ts-node": "^10.9.0",
+    "typescript": "*"
+  }
+}

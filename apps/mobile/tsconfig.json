@@ -1,0 +1,12 @@
+{
+  "extends": "expo/tsconfig.base",
+  "compilerOptions": {
+    "strict": true,
+    "paths": {
+      "@/*": ["./src/*"],
+      "@truck-shipping/shared-types": ["../../packages/shared-types/src/index.ts"],
+      "@truck-shipping/shared-validators": ["../../packages/shared-validators/src/index.ts"],
+      "@truck-shipping/shared-utils": ["../../packages/shared-utils/src/index.ts"]
+    }
+  }
+}

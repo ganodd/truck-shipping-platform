@@ -1,0 +1,459 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─────────────────────────────────────────
+// Enums
+// ─────────────────────────────────────────
+
+enum UserRole {
+  SHIPPER
+  CARRIER
+  DISPATCHER
+  ADMIN
+}
+
+enum KycStatus {
+  NOT_SUBMITTED
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum EquipmentType {
+  DRY_VAN
+  FLATBED
+  REEFER
+  STEP_DECK
+  LOWBOY
+  TANKER
+  POWER_ONLY
+  BOX_TRUCK
+}
+
+enum LoadStatus {
+  DRAFT
+  AVAILABLE
+  MATCHED
+  BOOKED
+  COMPLETED
+  CANCELLED
+}
+
+enum BidStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+  WITHDRAWN
+}
+
+enum ShipmentStatus {
+  PENDING_PICKUP
+  PICKED_UP
+  IN_TRANSIT
+  DELIVERED
+  CANCELLED
+}
+
+enum DocumentType {
+  POD
+  BOL
+  RECEIPT
+  LICENSE
+  INSURANCE
+  PERMIT
+}
+
+enum PaymentStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+  REFUNDED
+}
+
+enum FeeType {
+  LINEHAUL
+  DETENTION
+  LUMPER
+  ACCESSORIAL
+  FUEL_SURCHARGE
+}
+
+enum InvoiceStatus {
+  DRAFT
+  SENT
+  PAID
+  OVERDUE
+  CANCELLED
+}
+
+enum NotificationType {
+  BOOKING_CONFIRMED
+  STATUS_CHANGED
+  PAYMENT_RECEIVED
+  DOCUMENT_REQUESTED
+  BID_RECEIVED
+  BID_ACCEPTED
+  BID_REJECTED
+  LOAD_CANCELLED
+  NEW_MESSAGE
+}
+
+// ─────────────────────────────────────────
+// Users & Auth
+// ─────────────────────────────────────────
+
+model User {
+  id           String    @id @default(uuid())
+  email        String    @unique
+  passwordHash String
+  role         UserRole
+  firstName    String
+  lastName     String
+  phone        String
+  companyName  String?
+  kycStatus    KycStatus @default(NOT_SUBMITTED)
+  avatarUrl    String?
+  emailVerified Boolean  @default(false)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  shipperProfile   ShipperProfile?
+  carrierProfile   CarrierProfile?
+  refreshTokens    RefreshToken[]
+  documents        Document[]
+  notifications    Notification[]
+  sentRatings      Rating[]         @relation("RatingFrom")
+  receivedRatings  Rating[]         @relation("RatingTo")
+
+  @@index([email])
+  @@map("users")
+}
+
+model ShipperProfile {
+  id               String   @id @default(uuid())
+  userId           String   @unique
+  companyAddress   String?
+  businessLicense  String?
+  insuranceDoc     String?
+  verified         Boolean  @default(false)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  loads            Load[]
+  shipmentsAsShipper Shipment[] @relation("ShipmentShipper")
+  paymentsAsShipper  Payment[]  @relation("PaymentShipper")
+
+  @@map("shipper_profiles")
+}
+
+model CarrierProfile {
+  id               String    @id @default(uuid())
+  userId           String    @unique
+  usdotNumber      String?
+  mcNumber         String?
+  insuranceExpiry  DateTime?
+  licenseNumber    String?
+  licenseExpiry    DateTime?
+  preferredLanes   Json?     // String[] of state abbreviations
+  verified         Boolean   @default(false)
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  user             User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  vehicles         Vehicle[]
+  bids             Bid[]
+  shipmentsAsCarrier Shipment[] @relation("ShipmentCarrier")
+  locationUpdates  LocationUpdate[]
+  paymentsAsCarrier Payment[] @relation("PaymentCarrier")
+
+  @@map("carrier_profiles")
+}
+
+model RefreshToken {
+  id        String   @id @default(uuid())
+  userId    String
+  token     String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([token])
+  @@index([userId])
+  @@map("refresh_tokens")
+}
+
+// ─────────────────────────────────────────
+// Vehicles
+// ─────────────────────────────────────────
+
+model Vehicle {
+  id              String      @id @default(uuid())
+  carrierId       String
+  type            EquipmentType
+  make            String
+  model           String
+  year            Int
+  licensePlate    String
+  capacityTons    Float
+  vin             String?
+  insuranceExpiry DateTime?
+  active          Boolean     @default(true)
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  carrier         CarrierProfile @relation(fields: [carrierId], references: [id], onDelete: Cascade)
+  shipments       Shipment[]
+
+  @@index([carrierId])
+  @@map("vehicles")
+}
+
+// ─────────────────────────────────────────
+// Loads & Bids
+// ─────────────────────────────────────────
+
+model Load {
+  id                  String        @id @default(uuid())
+  shipperId           String
+  // Origin stored as JSON {address, city, state, zipCode, latitude, longitude}
+  origin              Json
+  // Destination stored as JSON {address, city, state, zipCode, latitude, longitude}
+  destination         Json
+  equipmentType       EquipmentType
+  weightLbs           Float
+  dimensions          Json?         // {lengthFt?, widthFt?, heightFt?}
+  pickupWindowStart   DateTime
+  pickupWindowEnd     DateTime
+  deliveryWindowStart DateTime
+  deliveryWindowEnd   DateTime
+  description         String?
+  specialInstructions String?
+  budgetMin           Int?          // stored in cents
+  budgetMax           Int?          // stored in cents
+  instantBookPrice    Int?          // stored in cents
+  status              LoadStatus    @default(DRAFT)
+  createdAt           DateTime      @default(now())
+  updatedAt           DateTime      @updatedAt
+
+  shipper             ShipperProfile @relation(fields: [shipperId], references: [id], onDelete: Restrict)
+  bids                Bid[]
+  shipment            Shipment?
+
+  @@index([status])
+  @@index([shipperId])
+  @@index([equipmentType])
+  @@index([pickupWindowStart])
+  @@map("loads")
+}
+
+model Bid {
+  id                String    @id @default(uuid())
+  loadId            String
+  carrierId         String
+  amount            Int       // stored in cents
+  estimatedPickup   DateTime
+  estimatedDelivery DateTime
+  notes             String?
+  status            BidStatus @default(PENDING)
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  load              Load           @relation(fields: [loadId], references: [id], onDelete: Cascade)
+  carrier           CarrierProfile @relation(fields: [carrierId], references: [id], onDelete: Restrict)
+  acceptedShipment  Shipment?      @relation("AcceptedBid")
+
+  @@index([loadId])
+  @@index([carrierId])
+  @@index([status])
+  @@map("bids")
+}
+
+// ─────────────────────────────────────────
+// Shipments
+// ─────────────────────────────────────────
+
+model Shipment {
+  id            String         @id @default(uuid())
+  loadId        String         @unique
+  carrierId     String
+  shipperId     String
+  vehicleId     String?
+  acceptedBidId String         @unique
+  agreedPrice   Int            // stored in cents
+  status        ShipmentStatus @default(PENDING_PICKUP)
+  pickedUpAt    DateTime?
+  deliveredAt   DateTime?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  load            Load           @relation(fields: [loadId], references: [id], onDelete: Restrict)
+  carrier         CarrierProfile @relation("ShipmentCarrier", fields: [carrierId], references: [id], onDelete: Restrict)
+  shipper         ShipperProfile @relation("ShipmentShipper", fields: [shipperId], references: [id], onDelete: Restrict)
+  vehicle         Vehicle?       @relation(fields: [vehicleId], references: [id], onDelete: SetNull)
+  acceptedBid     Bid            @relation("AcceptedBid", fields: [acceptedBidId], references: [id], onDelete: Restrict)
+  events          ShipmentEvent[]
+  locationUpdates LocationUpdate[]
+  documents       Document[]
+  payments        Payment[]
+  invoices        Invoice[]
+  ratings         Rating[]
+
+  @@index([carrierId])
+  @@index([shipperId])
+  @@index([status])
+  @@map("shipments")
+}
+
+model ShipmentEvent {
+  id          String         @id @default(uuid())
+  shipmentId  String
+  status      ShipmentStatus
+  latitude    Float?
+  longitude   Float?
+  notes       String?
+  timestamp   DateTime       @default(now())
+
+  shipment    Shipment       @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+
+  @@index([shipmentId, timestamp])
+  @@map("shipment_events")
+}
+
+model LocationUpdate {
+  id          String   @id @default(uuid())
+  shipmentId  String
+  carrierId   String
+  latitude    Float
+  longitude   Float
+  speed       Float?   // km/h
+  heading     Float?   // degrees 0-360
+  accuracy    Float?   // meters
+  timestamp   DateTime @default(now())
+
+  shipment    Shipment       @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+  carrier     CarrierProfile @relation(fields: [carrierId], references: [id], onDelete: Cascade)
+
+  @@index([shipmentId, timestamp])
+  @@index([carrierId, timestamp])
+  @@map("location_updates")
+}
+
+// ─────────────────────────────────────────
+// Documents
+// ─────────────────────────────────────────
+
+model Document {
+  id         String       @id @default(uuid())
+  shipmentId String?
+  userId     String
+  type       DocumentType
+  fileName   String
+  fileUrl    String
+  fileSize   Int          // bytes
+  mimeType   String
+  verified   Boolean      @default(false)
+  createdAt  DateTime     @default(now())
+
+  shipment   Shipment?    @relation(fields: [shipmentId], references: [id], onDelete: SetNull)
+  user       User         @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@index([shipmentId])
+  @@index([userId])
+  @@map("documents")
+}
+
+// ─────────────────────────────────────────
+// Payments & Invoices
+// ─────────────────────────────────────────
+
+model Payment {
+  id                    String        @id @default(uuid())
+  shipmentId            String
+  shipperId             String
+  carrierId             String
+  stripePaymentIntentId String?       @unique
+  amount                Int           // stored in cents
+  feeType               FeeType
+  status                PaymentStatus @default(PENDING)
+  paidAt                DateTime?
+  createdAt             DateTime      @default(now())
+  updatedAt             DateTime      @updatedAt
+
+  shipment    Shipment       @relation(fields: [shipmentId], references: [id], onDelete: Restrict)
+  shipper     ShipperProfile @relation("PaymentShipper", fields: [shipperId], references: [id], onDelete: Restrict)
+  carrier     CarrierProfile @relation("PaymentCarrier", fields: [carrierId], references: [id], onDelete: Restrict)
+
+  @@index([shipmentId])
+  @@index([stripePaymentIntentId])
+  @@map("payments")
+}
+
+model Invoice {
+  id            String        @id @default(uuid())
+  shipmentId    String
+  invoiceNumber String        @unique
+  lineItems     Json          // InvoiceLineItem[]
+  totalAmount   Int           // stored in cents
+  status        InvoiceStatus @default(DRAFT)
+  dueDate       DateTime
+  paidAt        DateTime?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  shipment      Shipment      @relation(fields: [shipmentId], references: [id], onDelete: Restrict)
+
+  @@index([shipmentId])
+  @@map("invoices")
+}
+
+// ─────────────────────────────────────────
+// Ratings & Notifications
+// ─────────────────────────────────────────
+
+model Rating {
+  id         String   @id @default(uuid())
+  shipmentId String
+  fromUserId String
+  toUserId   String
+  score      Int      // 1-5
+  comment    String?
+  createdAt  DateTime @default(now())
+
+  shipment   Shipment @relation(fields: [shipmentId], references: [id], onDelete: Restrict)
+  fromUser   User     @relation("RatingFrom", fields: [fromUserId], references: [id], onDelete: Restrict)
+  toUser     User     @relation("RatingTo", fields: [toUserId], references: [id], onDelete: Restrict)
+
+  @@unique([shipmentId, fromUserId])
+  @@index([toUserId])
+  @@map("ratings")
+}
+
+model Notification {
+  id        String           @id @default(uuid())
+  userId    String
+  type      NotificationType
+  title     String
+  body      String
+  data      Json?
+  read      Boolean          @default(false)
+  readAt    DateTime?
+  createdAt DateTime         @default(now())
+
+  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, read])
+  @@index([userId, createdAt])
+  @@map("notifications")
+}
