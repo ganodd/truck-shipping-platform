@@ -1,16 +1,17 @@
 import { ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
-import helmet from 'helmet';
-
 import { loadConfig } from '@truck-shipping/shared-utils';
+import helmet from 'helmet';
 
 import { AppModule } from './app.module';
 
 async function bootstrap(): Promise<void> {
   const config = loadConfig();
   const app = await NestFactory.create(AppModule, {
-    logger: config.NODE_ENV === 'production' ? ['error', 'warn'] : ['log', 'error', 'warn', 'debug'],
+    logger:
+      config.NODE_ENV === 'production' ? ['error', 'warn'] : ['log', 'error', 'warn', 'debug'],
+    rawBody: true,
   });
 
   // Security

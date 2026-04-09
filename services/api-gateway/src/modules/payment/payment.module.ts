@@ -1,10 +1,12 @@
 import { Module } from '@nestjs/common';
 
-// TODO Phase 3: Implement Stripe payment integration
-// Endpoints: POST /payments/intent, POST /payments/webhook, GET /shipments/:id/payments
+import { PaymentController } from './payment.controller';
+import { PaymentRepository } from './payment.repository';
+import { PaymentService } from './payment.service';
+
 @Module({
-  imports: [],
-  controllers: [],
-  providers: [],
+  controllers: [PaymentController],
+  providers: [PaymentRepository, PaymentService],
+  exports: [PaymentService],
 })
 export class PaymentModule {}
