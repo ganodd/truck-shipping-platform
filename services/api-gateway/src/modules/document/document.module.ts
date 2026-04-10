@@ -1,10 +1,12 @@
 import { Module } from '@nestjs/common';
 
-// TODO Phase 3: Implement document upload and management (S3 presigned URLs)
-// Endpoints: POST /documents/presign, GET /shipments/:id/documents
+import { DocumentController } from './document.controller';
+import { DocumentRepository } from './document.repository';
+import { DocumentService } from './document.service';
+
 @Module({
-  imports: [],
-  controllers: [],
-  providers: [],
+  controllers: [DocumentController],
+  providers: [DocumentRepository, DocumentService],
+  exports: [DocumentService],
 })
 export class DocumentModule {}

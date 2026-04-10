@@ -1,5 +1,6 @@
 export * from './auth.schema';
 export * from './bid.schema';
+export * from './document.schema';
 export * from './load.schema';
 export * from './payment.schema';
 export * from './shipment.schema';
