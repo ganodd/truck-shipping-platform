@@ -16,6 +16,7 @@ export function Nav() {
 
   const isCarrier = user?.role === 'CARRIER';
   const isShipper = user?.role === 'SHIPPER';
+  const isAdmin = user?.role === 'ADMIN';
 
   return (
     <nav className="border-b border-gray-200 bg-white px-6 py-3 flex items-center justify-between">
@@ -38,6 +39,16 @@ export function Nav() {
             </Link>
             <Link href="/bids" className="text-sm text-gray-600 hover:text-gray-900">
               My Bids
+            </Link>
+          </>
+        )}
+        {isAdmin && (
+          <>
+            <Link href="/admin" className="text-sm text-gray-600 hover:text-gray-900">
+              Analytics
+            </Link>
+            <Link href="/admin/users" className="text-sm text-gray-600 hover:text-gray-900">
+              Users
             </Link>
           </>
         )}

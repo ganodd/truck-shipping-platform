@@ -11,6 +11,7 @@ import { HealthModule } from './health/health.module';
 import { ResponseEnvelopeInterceptor } from './interceptors/response-envelope.interceptor';
 import { AuthMiddleware } from './middleware/auth.middleware';
 import { RequestLoggerMiddleware } from './middleware/request-logger.middleware';
+import { AdminModule } from './modules/admin/admin.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { BidModule } from './modules/bid/bid.module';
 import { DocumentModule } from './modules/document/document.module';
@@ -33,6 +34,7 @@ import { VehicleModule } from './modules/vehicle/vehicle.module';
       },
     ]),
     HealthModule,
+    AdminModule,
     AuthModule,
     LoadModule,
     BidModule,
