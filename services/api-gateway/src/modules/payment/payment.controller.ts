@@ -9,7 +9,8 @@ import {
   RawBodyRequest,
   Req,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
+import { SkipThrottle } from '@nestjs/throttler';
 import { type AuthPayload, UserRole } from '@truck-shipping/shared-types';
 import { createPaymentSchema } from '@truck-shipping/shared-validators';
 import type { Request } from 'express';
@@ -30,6 +31,10 @@ export class PaymentController {
   @ApiBearerAuth()
   @Roles(UserRole.SHIPPER)
   @ApiOperation({ summary: 'Create a Stripe PaymentIntent for a shipment fee' })
+  @ApiResponse({ status: 201, description: 'PaymentIntent created — returns clientSecret' })
+  @ApiResponse({ status: 400, description: 'Validation error' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({ status: 403, description: 'Shipper role required' })
   async createPaymentIntent(@CurrentUser() user: AuthPayload, @Body() body: unknown) {
     const input = createPaymentSchema.parse(body);
     return this.paymentService.createPaymentIntent(user.userId, input);
@@ -38,7 +43,10 @@ export class PaymentController {
   /** POST /payments/webhook — Stripe webhook (public, raw body required) */
   @Post('payments/webhook')
   @Public()
+  @SkipThrottle()
   @ApiOperation({ summary: 'Stripe webhook endpoint (internal use)' })
+  @ApiResponse({ status: 200, description: 'Event processed' })
+  @ApiResponse({ status: 400, description: 'Invalid signature or unknown event' })
   async handleWebhook(
     @Req() req: RawBodyRequest<Request>,
     @Headers('stripe-signature') signature: string,
@@ -52,6 +60,10 @@ export class PaymentController {
   @ApiBearerAuth()
   @ApiOperation({ summary: 'List all payments for a shipment' })
   @ApiParam({ name: 'shipmentId', type: String })
+  @ApiResponse({ status: 200, description: 'List of payments for the shipment' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({ status: 403, description: 'Access denied' })
+  @ApiResponse({ status: 404, description: 'Shipment not found' })
   async getShipmentPayments(
     @CurrentUser() user: AuthPayload,
     @Param('shipmentId') shipmentId: string,
