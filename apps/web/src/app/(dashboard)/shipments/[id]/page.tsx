@@ -1,10 +1,12 @@
 'use client';
 
 import { useParams, useRouter } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { io, type Socket } from 'socket.io-client';
 
 import { StatusBadge } from '../../../../components/StatusBadge';
 import { api } from '../../../../lib/api';
+import { useAuthStore } from '../../../../store/auth';
 
 interface ShipmentEvent {
   id: string;
@@ -36,25 +38,73 @@ interface Shipment {
 
 const STATUS_ORDER = ['PENDING_PICKUP', 'IN_TRANSIT', 'DELIVERED'];
 
+const NEXT_STATUS: Record<string, string> = {
+  PENDING_PICKUP: 'IN_TRANSIT',
+  IN_TRANSIT: 'DELIVERED',
+};
+
+const STATUS_LABEL: Record<string, string> = {
+  IN_TRANSIT: 'Mark as Picked Up',
+  DELIVERED: 'Mark as Delivered',
+};
+
 export default function ShipmentDetailPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
+  const user = useAuthStore((s) => s.user);
+  const isCarrier = user?.role === 'CARRIER';
+
   const [shipment, setShipment] = useState<Shipment | null>(null);
   const [loading, setLoading] = useState(true);
+  const [updating, setUpdating] = useState(false);
+  const [updateError, setUpdateError] = useState('');
+  const socketRef = useRef<Socket | null>(null);
+
+  const fetchShipment = async () => {
+    try {
+      const { data } = await api.get<{ data: Shipment }>(`/shipments/${id}`);
+      setShipment(data.data);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    const fetch = async () => {
-      try {
-        const { data } = await api.get<{ data: Shipment }>(`/shipments/${id}`);
-        setShipment(data.data);
-      } finally {
-        setLoading(false);
-      }
+    void fetchShipment();
+
+    // WebSocket — join shipment room for real-time updates
+    const wsUrl =
+      process.env.NEXT_PUBLIC_API_URL?.replace('/api/v1', '') ?? 'http://localhost:3000';
+    const socket = io(`${wsUrl}/events`, { transports: ['websocket'] });
+    socketRef.current = socket;
+
+    socket.on('connect', () => {
+      socket.emit('join', `shipment:${id}`);
+    });
+
+    socket.on('shipment.updated', () => {
+      void fetchShipment();
+    });
+
+    return () => {
+      socket.disconnect();
+      socketRef.current = null;
     };
-    void fetch();
-    const interval = setInterval(() => void fetch(), 30_000);
-    return () => clearInterval(interval);
   }, [id]);
+
+  const updateStatus = async (nextStatus: string) => {
+    setUpdating(true);
+    setUpdateError('');
+    try {
+      await api.patch(`/shipments/${id}/status`, { status: nextStatus });
+      await fetchShipment();
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { message?: string } } }).response?.data?.message;
+      setUpdateError(msg ?? 'Failed to update status.');
+    } finally {
+      setUpdating(false);
+    }
+  };
 
   if (loading) return <div className="py-16 text-center text-gray-400">Loading…</div>;
   if (!shipment) return <div className="py-16 text-center text-gray-400">Shipment not found.</div>;
@@ -63,6 +113,7 @@ export default function ShipmentDetailPage() {
   const fmt = (d?: string) => (d ? new Date(d).toLocaleString() : '—');
 
   const currentStep = STATUS_ORDER.indexOf(shipment.status);
+  const nextStatus = NEXT_STATUS[shipment.status];
 
   return (
     <div className="max-w-3xl space-y-6">
@@ -89,15 +140,34 @@ export default function ShipmentDetailPage() {
               >
                 {step.replace(/_/g, ' ')}
               </p>
-              {i < STATUS_ORDER.length - 1 && (
-                <div
-                  className={`absolute h-0.5 w-1/3 ${i < currentStep ? 'bg-blue-600' : 'bg-gray-200'}`}
-                />
-              )}
             </div>
           ))}
         </div>
       </section>
+
+      {/* Carrier status update controls */}
+      {isCarrier && nextStatus && (
+        <section className="rounded-xl border border-amber-200 bg-amber-50 p-5">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="font-semibold text-amber-900">Update Shipment Status</p>
+              <p className="text-sm text-amber-700">
+                Current: <strong>{shipment.status.replace(/_/g, ' ')}</strong>
+              </p>
+            </div>
+            <button
+              onClick={() => {
+                void updateStatus(nextStatus);
+              }}
+              disabled={updating}
+              className="rounded-lg bg-amber-500 px-5 py-2.5 text-sm font-semibold text-white hover:bg-amber-600 disabled:opacity-50 transition-colors"
+            >
+              {updating ? 'Updating…' : (STATUS_LABEL[nextStatus] ?? `Mark as ${nextStatus}`)}
+            </button>
+          </div>
+          {updateError && <p className="mt-2 text-sm text-red-600">{updateError}</p>}
+        </section>
+      )}
 
       {/* Route + Carrier */}
       <div className="grid grid-cols-2 gap-4">

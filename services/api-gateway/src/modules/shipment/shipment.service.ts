@@ -5,10 +5,11 @@ import {
   UnprocessableEntityException,
 } from '@nestjs/common';
 import { ShipmentStatus } from '@prisma/client';
-
-import type { UpdateStatusInput, LocationUpdateInput } from '@truck-shipping/shared-validators';
+import type { LocationUpdateInput, UpdateStatusInput } from '@truck-shipping/shared-validators';
 
 import { PrismaService } from '../../database/prisma.service';
+import { EventsGateway } from '../../gateway/events.gateway';
+
 import { ShipmentRepository } from './shipment.repository';
 
 const CARRIER_TRANSITIONS: Partial<Record<ShipmentStatus, ShipmentStatus>> = {
@@ -21,6 +22,7 @@ export class ShipmentService {
   constructor(
     private readonly shipmentRepository: ShipmentRepository,
     private readonly prisma: PrismaService,
+    private readonly eventsGateway: EventsGateway,
   ) {}
 
   private async requireCarrierProfile(userId: string) {
@@ -60,12 +62,20 @@ export class ShipmentService {
 
     if (role === 'SHIPPER') {
       const profile = await this.requireShipperProfile(userId);
-      const { shipments, total } = await this.shipmentRepository.findByShipper(profile.id, page, limit);
+      const { shipments, total } = await this.shipmentRepository.findByShipper(
+        profile.id,
+        page,
+        limit,
+      );
       return this.paginate(shipments, total, page, limit);
     }
 
     const profile = await this.requireCarrierProfile(userId);
-    const { shipments, total } = await this.shipmentRepository.findByCarrier(profile.id, page, limit);
+    const { shipments, total } = await this.shipmentRepository.findByCarrier(
+      profile.id,
+      page,
+      limit,
+    );
     return this.paginate(shipments, total, page, limit);
   }
 
@@ -74,7 +84,8 @@ export class ShipmentService {
     if (!shipment) throw new NotFoundException(`Shipment ${id} not found`);
 
     const profile = await this.requireCarrierProfile(userId);
-    if (shipment.carrierId !== profile.id) throw new ForbiddenException('You are not the carrier for this shipment');
+    if (shipment.carrierId !== profile.id)
+      throw new ForbiddenException('You are not the carrier for this shipment');
 
     const allowed = CARRIER_TRANSITIONS[shipment.status];
     if (!allowed || allowed !== input.status) {
@@ -94,7 +105,16 @@ export class ShipmentService {
       notes: input.notes,
     });
 
-    return this.shipmentRepository.findById(id);
+    const updated = await this.shipmentRepository.findById(id);
+
+    // Broadcast status change to all WebSocket clients watching this shipment
+    this.eventsGateway.emitShipmentUpdated(id, {
+      shipmentId: id,
+      status: input.status,
+      updatedAt: new Date().toISOString(),
+    });
+
+    return updated;
   }
 
   async addLocationUpdate(id: string, userId: string, input: LocationUpdateInput) {
@@ -102,13 +122,26 @@ export class ShipmentService {
     if (!shipment) throw new NotFoundException(`Shipment ${id} not found`);
 
     const profile = await this.requireCarrierProfile(userId);
-    if (shipment.carrierId !== profile.id) throw new ForbiddenException('You are not the carrier for this shipment');
+    if (shipment.carrierId !== profile.id)
+      throw new ForbiddenException('You are not the carrier for this shipment');
 
     if (shipment.status !== ShipmentStatus.IN_TRANSIT) {
-      throw new UnprocessableEntityException('Location updates only allowed for in-transit shipments');
+      throw new UnprocessableEntityException(
+        'Location updates only allowed for in-transit shipments',
+      );
     }
 
-    return this.shipmentRepository.addLocationUpdate(id, profile.id, input);
+    const update = await this.shipmentRepository.addLocationUpdate(id, profile.id, input);
+
+    // Broadcast location to watching clients
+    this.eventsGateway.emitShipmentUpdated(id, {
+      shipmentId: id,
+      latitude: input.latitude,
+      longitude: input.longitude,
+      updatedAt: new Date().toISOString(),
+    });
+
+    return update;
   }
 
   async getLocationHistory(id: string, page: number, limit: number) {

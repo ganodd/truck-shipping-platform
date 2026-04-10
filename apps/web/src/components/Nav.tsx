@@ -14,6 +14,9 @@ export function Nav() {
     router.push('/login');
   };
 
+  const isCarrier = user?.role === 'CARRIER';
+  const isShipper = user?.role === 'SHIPPER';
+
   return (
     <nav className="border-b border-gray-200 bg-white px-6 py-3 flex items-center justify-between">
       <div className="flex items-center gap-6">
@@ -23,9 +26,21 @@ export function Nav() {
         <Link href="/dashboard" className="text-sm text-gray-600 hover:text-gray-900">
           Dashboard
         </Link>
-        <Link href="/loads/new" className="text-sm text-gray-600 hover:text-gray-900">
-          Post Load
-        </Link>
+        {isShipper && (
+          <Link href="/loads/new" className="text-sm text-gray-600 hover:text-gray-900">
+            Post Load
+          </Link>
+        )}
+        {isCarrier && (
+          <>
+            <Link href="/loads" className="text-sm text-gray-600 hover:text-gray-900">
+              Load Board
+            </Link>
+            <Link href="/bids" className="text-sm text-gray-600 hover:text-gray-900">
+              My Bids
+            </Link>
+          </>
+        )}
       </div>
       <div className="flex items-center gap-4">
         {user && (
