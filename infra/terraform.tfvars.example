@@ -1,0 +1,31 @@
+# Copy this file to terraform.tfvars and fill in your values.
+# Never commit terraform.tfvars — it contains secrets.
+
+aws_region   = "us-east-1"
+environment  = "prod"
+project_name = "truck-shipping"
+vpc_cidr     = "10.0.0.0/16"
+
+# Database
+db_instance_class = "db.t3.micro"   # bump to db.t3.small for prod
+db_name           = "truckship"
+db_username       = "truckship"
+db_password       = "CHANGE_ME_min8chars"
+
+# Redis
+redis_node_type = "cache.t3.micro"
+
+# ECS sizing
+api_gateway_cpu           = 512
+api_gateway_memory        = 1024
+api_gateway_desired_count = 2
+
+web_cpu           = 256
+web_memory        = 512
+web_desired_count = 2
+
+# Secrets
+jwt_secret            = "CHANGE_ME_at_least_32_characters_long"
+stripe_secret_key     = "sk_live_..."
+stripe_webhook_secret = "whsec_..."
+s3_bucket_name        = "truck-shipping-documents-prod"

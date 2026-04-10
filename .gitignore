@@ -58,3 +58,11 @@ apps/mobile/.expo/
 # Test artifacts
 test-results/
 playwright-report/
+
+# Terraform
+infra/.terraform/
+infra/.terraform.lock.hcl
+infra/terraform.tfvars
+infra/terraform.tfstate
+infra/terraform.tfstate.backup
+infra/*.tfplan
