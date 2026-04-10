@@ -44,3 +44,13 @@ output "app_secret_arn" {
   description = "Secrets Manager ARN for app secrets — reference in ECS task definitions"
   value       = aws_secretsmanager_secret.app.arn
 }
+
+output "github_actions_role_arn" {
+  description = "IAM role ARN for GitHub Actions OIDC — set as GHA_ROLE_ARN secret in GitHub"
+  value       = aws_iam_role.github_actions.arn
+}
+
+output "ecs_task_security_group_id" {
+  description = "ECS tasks security group ID — needed for migration ECS run-task"
+  value       = aws_security_group.ecs_tasks.id
+}

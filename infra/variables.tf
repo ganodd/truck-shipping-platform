@@ -52,6 +52,11 @@ variable "db_password" {
   description = "PostgreSQL master password (min 8 chars)"
   type        = string
   sensitive   = true
+
+  validation {
+    condition     = length(var.db_password) >= 8
+    error_message = "db_password must be at least 8 characters."
+  }
 }
 
 # ─── Redis ─────────────────────────────────────────────────────────────────
@@ -128,4 +133,22 @@ variable "s3_bucket_name" {
   description = "S3 bucket name for document storage"
   type        = string
   default     = ""
+}
+
+variable "acm_certificate_arn" {
+  description = "ACM certificate ARN for HTTPS on the ALB (leave empty to skip HTTPS listener)"
+  type        = string
+  default     = ""
+}
+
+variable "github_org" {
+  description = "GitHub organisation name (for OIDC trust policy)"
+  type        = string
+  default     = "ganodd"
+}
+
+variable "github_repo" {
+  description = "GitHub repository name (for OIDC trust policy)"
+  type        = string
+  default     = "truck-shipping-platform"
 }

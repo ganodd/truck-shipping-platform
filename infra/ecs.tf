@@ -60,6 +60,7 @@ resource "aws_lb" "main" {
   load_balancer_type = "application"
   security_groups    = [aws_security_group.alb.id]
   subnets            = aws_subnet.public[*].id
+  enable_deletion_protection = var.environment == "prod"
 
   tags = { Name = "${local.name_prefix}-alb" }
 }
@@ -102,10 +103,43 @@ resource "aws_lb_target_group" "web" {
   tags = { Name = "${local.name_prefix}-web-tg" }
 }
 
+# HTTP listener: redirect to HTTPS when cert is set, otherwise forward directly
 resource "aws_lb_listener" "http" {
   load_balancer_arn = aws_lb.main.arn
   port              = 80
   protocol          = "HTTP"
+
+  default_action {
+    type = var.acm_certificate_arn != "" ? "redirect" : "forward"
+
+    dynamic "redirect" {
+      for_each = var.acm_certificate_arn != "" ? [1] : []
+      content {
+        port        = "443"
+        protocol    = "HTTPS"
+        status_code = "HTTP_301"
+      }
+    }
+
+    dynamic "forward" {
+      for_each = var.acm_certificate_arn == "" ? [1] : []
+      content {
+        target_group {
+          arn = aws_lb_target_group.web.arn
+        }
+      }
+    }
+  }
+}
+
+# HTTPS listener (only created when ACM cert is provided)
+resource "aws_lb_listener" "https" {
+  count             = var.acm_certificate_arn != "" ? 1 : 0
+  load_balancer_arn = aws_lb.main.arn
+  port              = 443
+  protocol          = "HTTPS"
+  ssl_policy        = "ELBSecurityPolicy-TLS13-1-2-2021-06"
+  certificate_arn   = var.acm_certificate_arn
 
   default_action {
     type             = "forward"
@@ -114,7 +148,8 @@ resource "aws_lb_listener" "http" {
 }
 
 resource "aws_lb_listener_rule" "api" {
-  listener_arn = aws_lb_listener.http.arn
+  # Route /api/* to the api-gateway target group on whichever listener is active
+  listener_arn = var.acm_certificate_arn != "" ? aws_lb_listener.https[0].arn : aws_lb_listener.http.arn
   priority     = 10
 
   action {
@@ -178,15 +213,19 @@ resource "aws_iam_role" "ecs_task" {
 }
 
 resource "aws_iam_role_policy" "ecs_task_s3" {
-  name = "${local.name_prefix}-ecs-task-s3"
-  role = aws_iam_role.ecs_task.id
+  count = var.s3_bucket_name != "" ? 1 : 0
+  name  = "${local.name_prefix}-ecs-task-s3"
+  role  = aws_iam_role.ecs_task.id
 
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [{
-      Effect   = "Allow"
-      Action   = ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"]
-      Resource = ["arn:aws:s3:::${var.s3_bucket_name}/*"]
+      Effect = "Allow"
+      Action = ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"]
+      Resource = [
+        "arn:aws:s3:::${var.s3_bucket_name}",
+        "arn:aws:s3:::${var.s3_bucket_name}/*",
+      ]
     }]
   })
 }
@@ -205,7 +244,7 @@ resource "aws_secretsmanager_secret_version" "app" {
 
   secret_string = jsonencode({
     DATABASE_URL          = "postgresql://${var.db_username}:${var.db_password}@${aws_db_instance.postgres.address}:5432/${var.db_name}"
-    REDIS_URL             = "redis://${aws_elasticache_replication_group.redis.primary_endpoint_address}:6379"
+    REDIS_URL             = "rediss://${aws_elasticache_replication_group.redis.primary_endpoint_address}:6379"
     JWT_SECRET            = var.jwt_secret
     STRIPE_SECRET_KEY     = var.stripe_secret_key
     STRIPE_WEBHOOK_SECRET = var.stripe_webhook_secret
